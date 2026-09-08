@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
+# (arquivo de declaração puro: toda variável é consumida por quem faz
+# `source` deste arquivo — bin/verify-package.sh — não por ele mesmo.)
 # Declaração REAL do RIT360 Solidário — repositório
 # /mnt/trabalho/Projetos/RIT/RIT360/Solidario/Code, gerada a partir de
 # bin/build-zip.sh. Usada por tests/run-tests-reais.sh contra o .zip

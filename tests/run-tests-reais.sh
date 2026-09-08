@@ -47,8 +47,11 @@ for entrada in "${PRODUTOS[@]}"; do
   cfg="${entrada%%|*}"
   glob="${entrada#*|}"
 
+  # O padrão precisa ser expandido pelo shell (daí sem aspas), e a ordenação
+  # é por versão — `sort -V` põe 2.26.10 depois de 2.26.9, o alfabético não.
   # shellcheck disable=SC2086
-  zip="$(ls -1v $glob 2>/dev/null | tail -1)" || true
+  zip="$(printf '%s\n' $glob 2>/dev/null | sort -V | tail -1)" || true
+  [ -f "$zip" ] || zip=""
 
   nome="$(basename -- "$cfg" .release.config.sh)"
 

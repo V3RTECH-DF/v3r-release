@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034
+# (arquivo de declaração puro: toda variável é consumida por quem faz
+# `source` deste arquivo — bin/verify-package.sh — não por ele mesmo.)
 # Declaração REAL do V3REvent — repositório
 # /mnt/trabalho/Projetos/V3RTECH/V3REvent/Code, gerada a partir de
 # bin/build-zip.sh. Usada por tests/run-tests-reais.sh contra o .zip
