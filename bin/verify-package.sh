@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# verify-package.sh — a conferência do pacote montado (itens 1 a 15 do §5 do
-# contrato). Ver docs/contrato.md e docs/declaracao.md.
+# verify-package.sh — a conferência do pacote montado (itens 1 a 15 e 20 do §5
+# do contrato). Ver docs/contrato.md e docs/declaracao.md.
 #
 # Uso:
 #   bin/verify-package.sh [--all] <pacote.zip> <release.config.sh>
@@ -23,7 +23,8 @@ TOOLING_ROOT="$(cd -- "$SCRIPT_DIR/.." >/dev/null 2>&1 && pwd -P)"
 
 uso() {
   cat >&2 <<'EOF'
-Uso: verify-package.sh [--all] --expected-version <versão> <pacote.zip> <release.config.sh>
+Uso: verify-package.sh [--all] --expected-version <versão>
+       [--expected-lib-version <slug>=<versão> ...] <pacote.zip> <release.config.sh>
 
   --all                  não para na primeira recusa: roda todas as
                          conferências e lista todas as recusas encontradas.
@@ -33,11 +34,19 @@ Uso: verify-package.sh [--all] --expected-version <versão> <pacote.zip> <releas
                          convenção de nome de zip não existe entre os
                          produtos da casa, e deduzir do nome seria circular
                          (quem nomeia o zip é a mesma receita que confere).
+  --expected-lib-version <slug>=<v>
+                         a versão que se ESPERA que a biblioteca prefixada
+                         <slug> tenha embutido — repetível, uma vez por
+                         biblioteca declarada em RELEASE_LIBRARY_VERSION_FILES
+                         (item 20 do §5). Quem decide o valor é quem monta o
+                         build (tipicamente lendo o composer.lock ANTES de
+                         empacotar) — nunca um número mantido à mão aqui.
 EOF
 }
 
 ALL_MODE=false
 EXPECTED_VERSION=""
+declare -A EXPECTED_LIB_VERSIONS=()
 ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -49,6 +58,23 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       EXPECTED_VERSION="$2"
+      shift 2
+      ;;
+    --expected-lib-version)
+      if [ "$#" -lt 2 ]; then
+        echo "erro: --expected-lib-version exige um valor no formato slug=versão" >&2
+        uso
+        exit 2
+      fi
+      _elv="$2"
+      _elv_slug="${_elv%%=*}"
+      if [ -z "$_elv_slug" ] || [ "$_elv_slug" = "$_elv" ]; then
+        echo "erro: --expected-lib-version espera o formato slug=versão (recebi '$_elv')" >&2
+        uso
+        exit 2
+      fi
+      EXPECTED_LIB_VERSIONS["$_elv_slug"]="${_elv#*=}"
+      unset _elv _elv_slug
       shift 2
       ;;
     -h|--help) uso; exit 0 ;;
@@ -102,6 +128,7 @@ RELEASE_FRONT_ENQUEUED_FILES=()
 RELEASE_PREFIXED_LIBS=()
 RELEASE_AUTOLOAD_FILE=""
 RELEASE_CLASSMAP_FILES=()
+RELEASE_LIBRARY_VERSION_FILES=()
 
 RELEASE_RUNTIME_DATA_FILES=()
 RELEASE_REQUIRED_PATHS=()
@@ -583,6 +610,76 @@ check_itens_6_a_10_bibliotecas_prefixadas() {
 }
 
 # ---------------------------------------------------------------------------
+# Item 20 — versão embutida de biblioteca prefixada (V3RCore-Code#44)
+#
+# O guard das itens 6–10 confere que a biblioteca CHEGOU ao pacote — nunca
+# QUAL versão chegou. Um composer.lock desatualizado (de outra máquina, de
+# uma sincronização) faz o empacotamento embutir uma versão antiga em
+# silêncio: os itens 6–10 continuam passando, porque a árvore prefixada
+# existe e resolve — só que é a árvore de uma versão mais velha do que a
+# publicação pretende.
+#
+# Cada entrada de RELEASE_LIBRARY_VERSION_FILES aponta, DENTRO do diretório
+# prefixado já declarado em RELEASE_PREFIXED_LIBS (mesmo slug), o arquivo e a
+# regex que expõem a versão da biblioteca em tempo de execução. O valor
+# esperado NUNCA vem daqui — vem de --expected-lib-version, passado por quem
+# monta o build (tipicamente lido do composer.lock um instante antes de
+# empacotar): falha fechada, mesma lógica do item 2 com --expected-version.
+# ---------------------------------------------------------------------------
+
+check_item_20_versao_biblioteca_prefixada() {
+  local entrada slug resto arquivo_rel regex
+  for entrada in "${RELEASE_LIBRARY_VERSION_FILES[@]:-}"; do
+    [ -n "$entrada" ] || continue
+    slug="${entrada%%|*}"
+    resto="${entrada#*|}"
+    arquivo_rel="${resto%%|*}"
+    regex="${resto#*|}"
+
+    # Acha o diretório prefixado já declarado para este slug em
+    # RELEASE_PREFIXED_LIBS — não duplica a informação, só referencia pelo
+    # mesmo identificador (slug|dir_cru|dir_prefixado|classe_original|classe_prefixada).
+    local dir_prefixado="" pl_entrada pl_slug pl_resto
+    for pl_entrada in "${RELEASE_PREFIXED_LIBS[@]:-}"; do
+      pl_slug="${pl_entrada%%|*}"
+      if [ "$pl_slug" = "$slug" ]; then
+        pl_resto="${pl_entrada#*|}"   # dir_cru|dir_prefixado|classe_original|classe_prefixada
+        pl_resto="${pl_resto#*|}"     # dir_prefixado|classe_original|classe_prefixada
+        dir_prefixado="${pl_resto%%|*}"
+        break
+      fi
+    done
+    if [ -z "$dir_prefixado" ]; then
+      recusa "item 20 (versão da biblioteca $slug): RELEASE_LIBRARY_VERSION_FILES cita '$slug', mas não há entrada correspondente em RELEASE_PREFIXED_LIBS"
+      continue
+    fi
+
+    local alvo="$PKG_ROOT/$dir_prefixado/$arquivo_rel"
+    if [ ! -f "$alvo" ]; then
+      recusa "item 20 (versão da biblioteca $slug): $dir_prefixado/$arquivo_rel não existe no pacote"
+      continue
+    fi
+
+    local versao_embutida
+    versao_embutida="$(extrai_versao "$alvo" "$regex")"
+    if [ -z "$versao_embutida" ]; then
+      recusa "item 20 (versão da biblioteca $slug): não achei versão legível em $dir_prefixado/$arquivo_rel com a regex declarada"
+      continue
+    fi
+
+    if [ -z "${EXPECTED_LIB_VERSIONS[$slug]+_}" ]; then
+      recusa "item 20 (versão da biblioteca $slug): a declaração pede conferência, mas --expected-lib-version $slug=<versão> não foi passado (falha fechada)"
+      continue
+    fi
+
+    local esperada="${EXPECTED_LIB_VERSIONS[$slug]}"
+    if [ "$versao_embutida" != "$esperada" ]; then
+      recusa "item 20 (versão da biblioteca $slug): o pacote traz $versao_embutida, mas o build esperava $esperada"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
 # Item 11 — arquivos de dados lidos em runtime
 # ---------------------------------------------------------------------------
 
@@ -701,6 +798,7 @@ check_item_3_versao_extra
 check_item_4_artefatos_front
 check_item_5_front_enfileirado
 check_itens_6_a_10_bibliotecas_prefixadas
+check_item_20_versao_biblioteca_prefixada
 check_item_11_dados_runtime
 check_item_12_caminhos_obrigatorios
 check_item_13_pasta_raiz

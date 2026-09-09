@@ -13,6 +13,11 @@
 FIXTURE_SLUG="v3r-example"
 FIXTURE_VERSION="1.0.0"
 
+# Versão da biblioteca prefixada (guzzle, na linha de base) — deliberadamente
+# DIFERENTE de FIXTURE_VERSION, para o item 20 provar que confere a
+# biblioteca, não o plugin.
+FIXTURE_LIB_VERSION="2.5.0"
+
 # build_baseline_fixture <diretório-pai>
 # Cria <diretório-pai>/v3r-example/... com um pacote inteiramente correto:
 # todas as 15 conferências (mais §3 e §6) passam nele.
@@ -52,6 +57,18 @@ EOF
 <?php
 namespace V3RExample\GuzzleHttp;
 class Client {}
+EOF
+
+  # Arquivo de versão da biblioteca prefixada — usado só pelos testes do
+  # item 20 (V3RCore-Code#44); a declaração de linha de base
+  # (examples/release.config.sh) não referencia RELEASE_LIBRARY_VERSION_FILES,
+  # então a presença deste arquivo é inócua para todos os outros itens.
+  cat > "$root/vendor-prefixed/guzzlehttp/guzzle/src/Version.php" <<EOF
+<?php
+namespace V3RExample\GuzzleHttp;
+class LibVersion {
+    const CURRENT = '$FIXTURE_LIB_VERSION';
+}
 EOF
 
   mkdir -p "$root/vendor/composer"

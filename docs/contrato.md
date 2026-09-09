@@ -100,6 +100,7 @@ se corrige depois.**
 | 17 | análise estática ou estilo reprovados | ⚠️ só onde o produto declara os comandos; hoje quatro produtos têm as duas ferramentas configuradas e não as rodam ao publicar |
 | 18 | envio ao servidor de licenças que não devolveu sucesso | — |
 | 19 | resumo do pacote diferente do que o servidor registrou | prova que chegou inteiro o que saiu |
+| 20 | versão embutida de uma biblioteca prefixada diferente da esperada pelo build | os itens 6–10 provam que a biblioteca CHEGOU, nunca QUAL versão — `composer.lock` desatualizado embute a antiga em silêncio, e a capacidade nova "não existe" em produção com o código-fonte provando que ela existe (V3RCore-Code#44) |
 
 ⚠️ **Tudo isto se confere sobre o PACOTE MONTADO, nunca sobre a árvore de
 trabalho.** Conferir a árvore prova o que *vai* para o pacote; não prova o que
@@ -132,7 +133,7 @@ decisão separada e deliberada, e continua sendo de quem empurra a tag.
 3. compilar os artefatos de front (§5, 4–5);
 4. montar a árvore de distribuição e prefixar;
 5. **empacotar**;
-6. conferir o pacote (§5, 6–15) — desempacotando o pacote de verdade;
+6. conferir o pacote (§5, 6–15 e 20) — desempacotando o pacote de verdade;
 7. enviar e conferir o resumo (§5, 18–19).
 
 ⚠️ **O passo 6 abre o pacote final.** Conferir o diretório que estava prestes a

@@ -102,6 +102,43 @@ GERADO, não código do produto, e legitimamente contêm o nome original como
 sufixo do nome prefixado (a garantia de que resolvem para arquivo existente
 já é o item 9).
 
+### Versão embutida de biblioteca prefixada (item 20 do §5)
+
+| Campo | Descrição |
+|---|---|
+| `RELEASE_LIBRARY_VERSION_FILES` | Array de `"slug\|arquivo_relativo_ao_dir_prefixado\|regex"`. O `slug` precisa ser o MESMO já usado numa entrada de `RELEASE_PREFIXED_LIBS` — é dali que o item 20 pega o diretório prefixado, sem duplicar a informação. |
+
+Os itens 6–10 provam que a biblioteca **chegou** ao pacote; não provam **qual
+versão** chegou. Um `composer.lock` desatualizado (de outra máquina, de uma
+sincronização) faz o empacotamento embutir uma versão antiga em silêncio —
+os itens 6–10 continuam passando, porque a árvore prefixada existe e
+resolve; só é a árvore de uma versão mais velha do que a publicação pretende
+(V3RCore-Code#44).
+
+O valor **esperado** não tem campo aqui — nunca é número mantido à mão neste
+arquivo, que descolaria na primeira distração. Vem de `--expected-lib-version
+<slug>=<versão>` (repetível, uma vez por slug declarado), argumento passado
+por quem monta o build — tipicamente lido do `composer.lock` um instante
+antes de empacotar. Slug declarado em `RELEASE_LIBRARY_VERSION_FILES` sem o
+`--expected-lib-version` correspondente é recusa (falha fechada, mesma
+lógica do item 2 com `--expected-version`).
+
+Exemplo, para a `v3r-core` (que expõe `V3R\Core\Version::CURRENT`, uma
+constante de CLASSE — não `define()`, que colidiria entre dois plugins
+embutindo versões diferentes no mesmo WordPress):
+
+```bash
+RELEASE_LIBRARY_VERSION_FILES=(
+  "v3r-core|src/Version.php|const CURRENT = '\\K[0-9]+\\.[0-9]+\\.[0-9]+"
+)
+```
+
+```bash
+bin/verify-package.sh --expected-version 1.2.3 \
+  --expected-lib-version v3r-core=0.22.1 \
+  dist/meuplugin-1.2.3.zip release.config.sh
+```
+
 ### Arquivos de dados lidos em runtime (item 11 do §5)
 
 | Campo | Descrição |

@@ -633,6 +633,122 @@ test_item15_diretorio_sem_travessia() {
 }
 
 # ---------------------------------------------------------------------------
+# Item 20 — versão embutida de biblioteca prefixada (V3RCore-Code#44)
+#
+# A linha de base já traz `Version.php` dentro da árvore prefixada do guzzle
+# (FIXTURE_LIB_VERSION), mas a declaração padrão (examples/release.config.sh)
+# NÃO tem RELEASE_LIBRARY_VERSION_FILES — por isso test_baseline_aprova
+# continua passando sem nunca acionar o item 20; cada teste abaixo acrescenta
+# o campo por conta própria, sem tocar a declaração compartilhada.
+# ---------------------------------------------------------------------------
+
+# declara_versao_biblioteca <config> — acrescenta RELEASE_LIBRARY_VERSION_FILES
+# apontando para o Version.php da linha de base (guzzle).
+declara_versao_biblioteca() {
+  local cfg="$1"
+  cat >> "$cfg" <<'EOF'
+RELEASE_LIBRARY_VERSION_FILES=(
+  "guzzle|src/Version.php|const CURRENT = '\\K[0-9]+\\.[0-9]+\\.[0-9]+"
+)
+EOF
+}
+
+test_item20_versao_bate_com_a_esperada_aprova() {
+  local wd zip cfg
+  wd="$(work_dir)"
+  ALL_WORKDIRS+=("$wd")
+  build_baseline_fixture "$wd"
+  cfg="$wd/release.config.sh"
+  baseline_config "$cfg"
+  declara_versao_biblioteca "$cfg"
+  zip="$wd/v3r-example-1.0.0.zip"
+  zip_fixture "$wd" "$FIXTURE_SLUG" "$FIXTURE_VERSION" "$zip"
+  roda_verify --expected-version "$FIXTURE_VERSION" --expected-lib-version "guzzle=$FIXTURE_LIB_VERSION" "$zip" "$cfg"
+  if [ "$RC" -ne 0 ]; then
+    fail "esperava aprovação (exit 0), veio $RC. Saída:
+$OUT"
+    return
+  fi
+  ok
+}
+
+# O par de controle: a MESMA árvore, mas a versão que o build declara esperar
+# é outra. Item 6-10 continuam passando (a árvore prefixada existe, resolve,
+# não tem nada nas duas árvores) — só o item 20 pode recusar aqui, e a
+# mensagem precisa dizer o que achou e o que esperava.
+test_item20_versao_diverge_da_esperada_e_recusada() {
+  local wd zip cfg
+  wd="$(work_dir)"
+  ALL_WORKDIRS+=("$wd")
+  build_baseline_fixture "$wd"
+  cfg="$wd/release.config.sh"
+  baseline_config "$cfg"
+  declara_versao_biblioteca "$cfg"
+  zip="$wd/v3r-example-1.0.0.zip"
+  zip_fixture "$wd" "$FIXTURE_SLUG" "$FIXTURE_VERSION" "$zip"
+  roda_verify --expected-version "$FIXTURE_VERSION" --expected-lib-version "guzzle=9.9.9" "$zip" "$cfg"
+  if [ "$RC" -eq 0 ]; then
+    fail "esperava recusa, mas o pacote foi aprovado. Saída:
+$OUT"
+    return
+  fi
+  if ! grep -qF -- "item 20" <<<"$OUT"; then
+    fail "recusou, mas não pela razão esperada (\"item 20\"). Saída:
+$OUT"
+    return
+  fi
+  if ! grep -qF -- "$FIXTURE_LIB_VERSION" <<<"$OUT" || ! grep -qF -- "9.9.9" <<<"$OUT"; then
+    fail "recusou pelo item 20, mas a mensagem não diz o que achou ($FIXTURE_LIB_VERSION) e o que esperava (9.9.9). Saída:
+$OUT"
+    return
+  fi
+  ok
+}
+
+# Falha fechada: a declaração pede a conferência (RELEASE_LIBRARY_VERSION_FILES
+# tem a entrada) mas ninguém passou --expected-lib-version para aquele slug —
+# recusa, não aprova por omissão.
+test_item20_sem_expected_lib_version_e_recusado() {
+  local wd zip cfg
+  wd="$(work_dir)"
+  ALL_WORKDIRS+=("$wd")
+  build_baseline_fixture "$wd"
+  cfg="$wd/release.config.sh"
+  baseline_config "$cfg"
+  declara_versao_biblioteca "$cfg"
+  zip="$wd/v3r-example-1.0.0.zip"
+  zip_fixture "$wd" "$FIXTURE_SLUG" "$FIXTURE_VERSION" "$zip"
+  roda_verify --expected-version "$FIXTURE_VERSION" "$zip" "$cfg"
+  if [ "$RC" -eq 0 ]; then
+    fail "esperava recusa (falha fechada), mas o pacote foi aprovado sem --expected-lib-version. Saída:
+$OUT"
+    return
+  fi
+  if ! grep -qF -- "item 20" <<<"$OUT"; then
+    fail "recusou, mas não pela razão esperada (\"item 20\"). Saída:
+$OUT"
+    return
+  fi
+  ok
+}
+
+# Controle negativo: declaração SEM RELEASE_LIBRARY_VERSION_FILES (a
+# declaração de linha de base, sem alteração nenhuma) precisa passar mesmo
+# SEM --expected-lib-version nenhum — o item 20 é opt-in, não pode travar
+# quem ainda não declarou biblioteca nenhuma para conferir.
+test_item20_sem_declaracao_nao_afeta_pacote_correto() {
+  local wd zip cfg
+  wd="$(work_dir)"
+  ALL_WORKDIRS+=("$wd")
+  build_baseline_fixture "$wd"
+  cfg="$wd/release.config.sh"
+  baseline_config "$cfg"
+  zip="$wd/v3r-example-1.0.0.zip"
+  zip_fixture "$wd" "$FIXTURE_SLUG" "$FIXTURE_VERSION" "$zip"
+  assert_aprovado "$zip" "$cfg" "$FIXTURE_VERSION"
+}
+
+# ---------------------------------------------------------------------------
 # Item 13, a ponta que o §5 destaca: pacote montado com árvore de origem
 # correta, mas raiz do ZIP errada — a conferência roda sobre o zip
 # desempacotado, não sobre a árvore de origem.
@@ -844,6 +960,10 @@ run_test test_item12_caminho_obrigatorio_ausente
 run_test test_item13_pasta_raiz_errada
 run_test test_item14_fonte_de_desenvolvimento_presente
 run_test test_item15_diretorio_sem_travessia
+run_test test_item20_versao_bate_com_a_esperada_aprova
+run_test test_item20_versao_diverge_da_esperada_e_recusada
+run_test test_item20_sem_expected_lib_version_e_recusado
+run_test test_item20_sem_declaracao_nao_afeta_pacote_correto
 run_test test_zip_com_raiz_diferente_da_origem_e_recusado
 run_test test_secao6_uninstall_ausente
 run_test test_secao6_uninstall_nao_exigido_passa
